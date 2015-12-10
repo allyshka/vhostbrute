@@ -17,7 +17,6 @@ else:
     from urllib.parse import urlparse, parse_qs
 from difflib import SequenceMatcher
 
-# parser = ArgumentParser(usage='%prog url [options]', description='Virtual host bruteforcer')
 parser = ArgumentParser()
 parser.add_argument('-u', '--url', type=str, default=None, help='URL to bruteforce')
 parser.add_argument('-s', '--scheme', type=str, default='http', help='Scheme to bruteforce')
@@ -28,13 +27,65 @@ parser.add_argument('-m', '--method', type=int, default=1, help='Method of brute
 parser.add_argument('-t', '--threads', type=int, default=0, help='Count of threads (default: maxcpu)')
 parser.add_argument('-d', '--vhosts', type=str, default='vhosts.list', help='Domain dictionary file')
 parser.add_argument('-z', '--zones', type=str, default=None, help='Zones dictionary file')
-parser.add_argument('-v', '--verbose', type=int, default=False, help='Show debug information')
-parser.add_argument('-', '--allow-redirects', type=int, default=False, help='Show debug information')
-parser.add_argument('-e', '--easy', type=int, default=True, help='Easy method to find virtual hosts (default: true)')
+parser.add_argument('-v', '--verbose', type=int, default=0, help='Show debug information')
+parser.add_argument('-', '--allow-redirects', type=int, default=0, help='Show debug information')
+parser.add_argument('-e', '--easy', type=int, default=1, help='Easy method to find virtual hosts (default: true)')
+parser.add_argument('-x', '--xff', type=int, default=1, help='File to save finded virtual host')
 parser.add_argument('-o', '--outfile', type=str, default=None, help='File to save finded virtual host')
 
 # requests warning off
 requests.packages.urllib3.disable_warnings()
+# header for XFF checks
+xff_check = False
+xff_ip = "127.0.0.1"
+xff_headers = {
+    "CACHE_INFO": xff_ip,
+    "CF_CONNECTING_IP": xff_ip,
+    "CLIENT_IP": xff_ip,
+    "COMING_FROM": xff_ip,
+    "CONNECT_VIA_IP": xff_ip,
+    "FORWARDED-FOR-IP": xff_ip,
+    "FORWARDED-FOR": xff_ip,
+    "FORWARDED": xff_ip,
+    "FORWARDED_FOR": xff_ip,
+    "FORWARDED_FOR_IP": xff_ip,
+    "HTTP-CLIENT-IP": xff_ip,
+    "HTTP-FORWARDED-FOR-IP": xff_ip,
+    "HTTP-FORWARDED-FOR": xff_ip,
+    "HTTP-FORWARDED": xff_ip,
+    "HTTP-PC-REMOTE-ADDR": xff_ip,
+    "HTTP-PROXY-CONNECTION": xff_ip,
+    "HTTP-VIA": xff_ip,
+    "HTTP-X-FORWARDED-FOR-IP": xff_ip,
+    "HTTP-X-FORWARDED-FOR": xff_ip,
+    "HTTP-X-FORWARDED": xff_ip,
+    "HTTP-X-IMFORWARDS": xff_ip,
+    "HTTP-XROXY-CONNECTION": xff_ip,
+    "PC_REMOTE_ADDR": xff_ip,
+    "PRAGMA": xff_ip,
+    "PROXY": xff_ip,
+    "PROXY_AUTHORIZATION": xff_ip,
+    "PROXY_CONNECTION": xff_ip,
+    "REMOTE_ADDR": xff_ip,
+    "VIA": xff_ip,
+    "X-FORWARDED-FOR": xff_ip,
+    "X-FORWARDED": xff_ip,
+    "X-REAL-IP": xff_ip,
+    "X_CLUSTER_CLIENT_IP": xff_ip,
+    "X_COMING_FROM": xff_ip,
+    "X_DELEGATE_REMOTE_HOST": xff_ip,
+    "X_FORWARDED": xff_ip,
+    "X_FORWARDED_FOR": xff_ip,
+    "X_FORWARDED_FOR_IP": xff_ip,
+    "X_IMFORWARDS": xff_ip,
+    "X_LOCKING": xff_ip,
+    "X_LOOKING": xff_ip,
+    "X_REAL_IP": xff_ip,
+    "XONNECTION": xff_ip,
+    "XPROXY": xff_ip,
+    "XROXY_CONNECTION": xff_ip,
+    "ZCACHE_CONTROL": xff_ip
+}
 # default parameters
 killapp = False
 # urls
@@ -66,6 +117,9 @@ verbose = False
 outfile = None
 finded = 0
 allow_redirects = False
+# file output
+outfile = False
+finded_list = []
 
 
 def similar(a, b):
@@ -81,7 +135,7 @@ def print_error(text, show_help=True):
 
 def check_params(params):
     global scheme, get_url, brute_url, base_url, notfound_url, threads, vhost_file, \
-        zone_file, verbose, easy, outfile, allow_redirects
+        zone_file, verbose, easy, outfile, allow_redirects, xff_check
     if isfile(params.vhosts) is False:
         print_error("File %s with virtual hosts doesn't exist" % params.vhosts)
     vhost_file = params.vhosts
@@ -104,6 +158,10 @@ def check_params(params):
         base_url = params.base
     if params.notfound:
         notfound_url = params.notfound
+    if params.xff:
+        xff_check = True
+    if params.outfile is not None:
+        outfile = params.outfile
     # check specified parameters by method
     if params.method == 2:
         if params.zones is None:
@@ -174,18 +232,25 @@ def get_base(head):
 
 
 def vhost_found(vhost):
-    global finded
+    global finded, finded_list
     print("Virutal host %s is found!" % vhost)
     finded += 1
+    finded_list.append(vhost)
 
 
 def compare():
-    global q, ua, get_url, base_url, b_length, easy, verbose, verify, nf_length, allow_redirects
+    global q, ua, get_url, base_url, b_length, easy, verbose, verify, nf_length, allow_redirects, xff_check
     while True:  # working with queue all time while script is running
         vhost = q.get()
         try:
+            if xff_check:
+                h = xff_headers
+            else:
+                h = {}
+            h["Host"] = vhost
+            h["User-Agent"] = ua
             response = requests.get(
-                    get_url, headers={'Host': vhost, "User-Agent": ua}, verify=verify, allow_redirects=allow_redirects)
+                    get_url, headers=h, verify=verify, allow_redirects=allow_redirects)
             if response.status_code == 301 or response.status_code == 302:
                 redirect = urlparse(response.headers["Location"])
                 if redirect.netloc == base_url or redirect.netloc == base_url:
@@ -225,6 +290,7 @@ def compare():
             q.task_done()
             # fatal error
             print(e)
+            pass
 
 
 def main():
@@ -241,6 +307,13 @@ def main():
         t.daemon = True
         t.start()
     q.join()
+    # write to file
+    if outfile:
+        with open(outfile, "a") as out:
+            if finded > 0:
+                out.write("URL: %s \n" % get_url)
+                for v in finded_list:
+                    out.write(v + "\n")
     print("Brute successfully completed. Found %d virtual host" % finded)
 
 
@@ -249,7 +322,8 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         print("Program is terminated!")
-        killapp = True
+        with q.mutex:
+            q.queue.clear()
         raise
     except Exception:
         sys.exit(1)

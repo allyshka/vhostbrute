@@ -47,6 +47,7 @@ This method working like subdomain bruteforce. For example you have *example.com
 Why vhosts? Because subdomains *test*, *dev* etc may not be resolve by *example.com* DNS servers. In this case **vhostbrute** can rock!
 
 We need file with vhosts, IP of remote server (ex.: 10.1.1.15), we need host for **base** request to server. Base request is request to main site **www.example.com** for valid vhost determination.
+
 **v.txt**:
 ```
 test
@@ -65,7 +66,8 @@ Brute successfully completed. Found 2 virtual host
 ```
 
 ### Method 2
-This method working like **Cluster bomb** in Burp. You need to use two dictionary files. First with domain name, second with zone name. Example (use **verbose** option for detail output):
+This method working like **Cluster bomb** in Burp. You need to use two dictionary files. First with domain name, second with zone name. Example (use **verbose** option for detail output).
+
 **d.txt**:
 ```
 admin
@@ -104,9 +106,11 @@ Brute successfully completed. Found 0 virtual host
 
 TODO:
 
- - Add write to outfile
- - Add XFF checks
+ - ~~Add write to outfile~~
+ - ~~Add XFF checks~~
+ - Add progress bar
  - Add many commentaries to source code
+ - OOP rewrite(?)
  - Add template vhost generator like [a-zz].example.com will try a.example.com, b.example.com ... zy.example.com, zz.example.com
  - Test, test and test again
 
