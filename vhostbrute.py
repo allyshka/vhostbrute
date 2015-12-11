@@ -1,6 +1,8 @@
+#!/usr/bin/env python
 import sys
 from argparse import ArgumentParser
 from os.path import isfile
+from difflib import SequenceMatcher
 
 import requests
 import threading
@@ -14,7 +16,6 @@ if is_py2:
 else:
     import queue as queue
     from urllib.parse import urlparse, parse_qs
-from difflib import SequenceMatcher
 
 parser = ArgumentParser()
 parser.add_argument('-u', '--url', type=str, default=None, help='URL to bruteforce')
@@ -279,7 +280,7 @@ def compare():
             h = {}
         h["Host"] = vhost
         h["User-Agent"] = ua
-        diff_nf = 1
+        diff_nf = 0
         try:
             response = requests.get(
                     get_url, headers=h, verify=verify, allow_redirects=allow_redirects)
