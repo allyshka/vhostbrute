@@ -1,5 +1,4 @@
 import sys
-import os
 from argparse import ArgumentParser
 from os.path import isfile
 
@@ -110,6 +109,7 @@ zone_file = None
 # default responses
 nf_response = b_response = None
 nf_length = b_length = 0
+notfound = base = True
 # find
 easy = True
 # v
@@ -120,6 +120,11 @@ allow_redirects = False
 # file output
 outfile = False
 finded_list = []
+# progress bar
+all_count = 0
+percent = 0
+# ugly mt fix for progress bar
+running = 0
 
 
 def similar(a, b):
@@ -183,7 +188,7 @@ def check_params(params):
 
 
 def prepare(url=None):
-    global q, vhost_file, zone_file
+    global q, vhost_file, zone_file, all_count
     vhosts = []
     with open(vhost_file, "r") as vhost:
         for v in vhost:
@@ -202,6 +207,7 @@ def prepare(url=None):
         else:
             for v in vhosts:
                 q.put(v + "." + url)
+    all_count = q.qsize()
 
 
 def base_requests():
@@ -213,42 +219,68 @@ def base_requests():
     # not found
     global nf_response, nf_length
     h = {"Host": str(int(time.time())), "User-Agent": ua}
-    nf_response, nf_length = get_base(h)
+    nf_response, nf_length = get_base(h, True)
 
 
-def get_base(head):
-    global get_url, verify
+def get_base(head, nf=False):
+    global get_url, verify, notfound
     try:
         response = requests.get(get_url, headers=head, verify=verify)
         resp = response.text.strip()
         length = len(resp)
         return resp, length
     except requests.exceptions.TooManyRedirects:
-        print_error("Cannot get base url. Too many redirects.", False)
-        pass
+        print_error("Cannot get %s url. Too many redirects." % "base" if nf is False else "nf", False)
+        raise
+    except requests.exceptions.ConnectionError:
+        if nf:
+            notfound = False
+            return False, False
+        print_error("Cannot connect to base url.", False)
+        raise
     except requests.exceptions.RequestException as e:
         # fatal error
         print(e)
 
 
 def vhost_found(vhost):
-    global finded, finded_list
-    print("Virutal host %s is found!" % vhost)
+    global finded, finded_list, verbose
+    text = "Virutal host %s is found!" % vhost
+    length = 0
+    if verbose is False:
+        sys.stdout.write("\r")
+        length = 60 - len(text)
+    # print("Virutal host %s is found!\n" % vhost)
+    sys.stdout.write("{:s}{:>{}s}".format(text, "\n", length if length > 0 else 0))
+    sys.stdout.flush()
     finded += 1
     finded_list.append(vhost)
 
 
 def compare():
-    global q, ua, get_url, base_url, b_length, easy, verbose, verify, nf_length, allow_redirects, xff_check
+    show_progress = False
+    global q, ua, get_url, base_url, b_length, easy, verbose, verify, nf_length, \
+        allow_redirects, xff_check, all_count, percent, running, notfound
     while True:  # working with queue all time while script is running
         vhost = q.get()
+        if running == 0:
+            running = 1
+            show_progress = True
+        if show_progress and verbose is False:
+            q_size = q.qsize()
+            if q_size % 10:
+                percent_new = float((all_count - q_size) * 100) / all_count
+                if int(percent) < percent_new:
+                    percent = percent_new
+                    progress_update(percent)
+        if xff_check:
+            h = xff_headers
+        else:
+            h = {}
+        h["Host"] = vhost
+        h["User-Agent"] = ua
+        diff_nf = 1
         try:
-            if xff_check:
-                h = xff_headers
-            else:
-                h = {}
-            h["Host"] = vhost
-            h["User-Agent"] = ua
             response = requests.get(
                     get_url, headers=h, verify=verify, allow_redirects=allow_redirects)
             if response.status_code == 301 or response.status_code == 302:
@@ -259,6 +291,12 @@ def compare():
                             response.status_code, vhost, response.headers["Location"]))
                     q.task_done()
                     continue
+            if response.status_code == 404 or response.status_code == 502:
+                if verbose:
+                    print('Got %d code on %s vhost. Skipping...' % (
+                        response.status_code, vhost))
+                q.task_done()
+                continue
             if verbose:
                 print("Trying %s..." % vhost)
             curr_response = response.text.strip()
@@ -270,27 +308,37 @@ def compare():
                 q.task_done()
                 continue
             diff_base = similar(curr_response, b_response)
-            diff_nf = similar(curr_response, nf_response)
+            if notfound is True:
+                diff_nf = similar(curr_response, nf_response)
             if diff_base <= 0.8 and diff_nf <= 0.8:
                 vhost_found(vhost)
             elif verbose:
                 print("%s not found" % vhost)
-            q.task_done()
+        except requests.exceptions.ConnectionError:
+            if verbose:
+                print("Cannot connect to %s virtual host" % vhost)
+            pass
         except requests.exceptions.Timeout:
-            q.task_done()
             if verbose:
                 print("Request to vhost %s failed: Timed out" % vhost)
             pass
         # Maybe set up for a retry, or continue in a retry loop
         except requests.exceptions.TooManyRedirects:
-            q.task_done()
-            print("Request to vhost %s failed: Too many redirects" % vhost)
+            if verbose:
+                print("Request to vhost %s failed: Too many redirects" % vhost)
             pass
         except requests.exceptions.RequestException as e:
-            q.task_done()
             # fatal error
             print(e)
             pass
+        q.task_done()
+
+
+def progress_update(i):
+    sys.stdout.write("\r")
+    # the exact output you're looking for:
+    sys.stdout.write("[%-50s] %.1f%%" % ('=' * int(i / 2), i))
+    sys.stdout.flush()
 
 
 def main():
@@ -314,7 +362,8 @@ def main():
                 out.write("URL: %s \n" % get_url)
                 for v in finded_list:
                     out.write(v + "\n")
-    print("Brute successfully completed. Found %d virtual host" % finded)
+    progress_update(100)
+    print("\nBrute successfully completed. Found %d virtual host" % finded)
 
 
 if __name__ == '__main__':
@@ -325,5 +374,3 @@ if __name__ == '__main__':
         with q.mutex:
             q.queue.clear()
         raise
-    except Exception:
-        sys.exit(1)

@@ -108,7 +108,8 @@ TODO:
 
  - ~~Add write to outfile~~
  - ~~Add XFF checks~~
- - Add progress bar
+ - ~~Add progress bar~~
+ - More-and-more error handling
  - Add many commentaries to source code
  - OOP rewrite(?)
  - Add template vhost generator like [a-zz].example.com will try a.example.com, b.example.com ... zy.example.com, zz.example.com
