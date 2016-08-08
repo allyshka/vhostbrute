@@ -5,6 +5,7 @@ Virtual host multi-threading bruteforcer with BJ and other stuff.
 Installation
 =====================
 Python 2.7 or 3 with Requests library >=2.7 needed.
+For tornado version you need tornado >= 4.3
 
 `pip install -r requirements.txt`
 
@@ -106,6 +107,7 @@ Brute successfully completed. Found 0 virtual host
 
 TODO:
 
+ - ~~Added tornado version much-MUCH faster~~
  - ~~Add write to outfile~~
  - ~~Add XFF checks~~
  - ~~Add progress bar~~
@@ -118,6 +120,7 @@ TODO:
 
 History
 =====================
+08.08.2016: Added tornado version. Speed +100.
 10.12.2015: First release. Basic functional.
 
 Credits
